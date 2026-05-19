@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "partysecurity",
+  "name": "party-security",
   "compatibility_date": "2025-05-19",
   "assets": {
     "directory": "./dist",
