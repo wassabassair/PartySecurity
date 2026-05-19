@@ -89,7 +89,8 @@ function AdminDashboard({ email }: { email: string }) {
   const [tickets, setTickets] = useState<TicketRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
-  const [created, setCreated] = useState<TicketRow | null>(null);
+  const [viewingTicket, setViewingTicket] = useState<TicketRow | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);
@@ -109,6 +110,53 @@ function AdminDashboard({ email }: { email: string }) {
     fetchTickets();
   }, [fetchTickets]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel('tickets-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tickets' },
+        (payload) => {
+          setTickets((prev) => {
+            if (payload.eventType === 'INSERT') {
+              const row = payload.new as TicketRow;
+              if (prev.some((t) => t.id === row.id)) return prev;
+              return [row, ...prev];
+            }
+            if (payload.eventType === 'UPDATE') {
+              const row = payload.new as TicketRow;
+              return prev.map((t) => (t.id === row.id ? row : t));
+            }
+            if (payload.eventType === 'DELETE') {
+              const id = (payload.old as { id: string }).id;
+              return prev.filter((t) => t.id !== id);
+            }
+            return prev;
+          });
+          if (payload.eventType === 'UPDATE') {
+            const row = payload.new as TicketRow;
+            setViewingTicket((current) =>
+              current && current.id === row.id ? row : current
+            );
+          }
+          if (payload.eventType === 'DELETE') {
+            const id = (payload.old as { id: string }).id;
+            setViewingTicket((current) => (current?.id === id ? null : current));
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (viewingTicket && panelRef.current) {
+      panelRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [viewingTicket]);
+
   const filtered = tickets.filter((t) => {
     if (!filter) return true;
     const q = filter.toLowerCase();
@@ -118,6 +166,17 @@ function AdminDashboard({ email }: { email: string }) {
       t.id.toLowerCase().includes(q)
     );
   });
+
+  const handleDelete = async (t: TicketRow) => {
+    if (!window.confirm(`Delete ticket for ${t.buyer_name}? This cannot be undone.`)) return;
+    const { error } = await supabase.from('tickets').delete().eq('id', t.id);
+    if (error) {
+      alert(`Could not delete: ${error.message}`);
+      return;
+    }
+    setTickets((prev) => prev.filter((x) => x.id !== t.id));
+    setViewingTicket((current) => (current?.id === t.id ? null : current));
+  };
 
   return (
     <div className="min-h-screen p-4 sm:p-8 max-w-3xl mx-auto space-y-6">
@@ -137,13 +196,19 @@ function AdminDashboard({ email }: { email: string }) {
 
       <CreateTicketForm
         onCreated={(t) => {
-          setCreated(t);
+          setViewingTicket(t);
           fetchTickets();
         }}
       />
 
-      {created && (
-        <CreatedTicketPanel ticket={created} onDismiss={() => setCreated(null)} />
+      {viewingTicket && (
+        <div ref={panelRef}>
+          <TicketBarcodePanel
+            ticket={viewingTicket}
+            onDismiss={() => setViewingTicket(null)}
+            onDelete={() => handleDelete(viewingTicket)}
+          />
+        </div>
       )}
 
       <section className="space-y-3">
@@ -172,23 +237,39 @@ function AdminDashboard({ email }: { email: string }) {
         ) : (
           <ul className="divide-y divide-slate-800 bg-slate-900 rounded-xl overflow-hidden">
             {filtered.map((t) => (
-              <li key={t.id} className="flex items-center justify-between p-3">
-                <div className="min-w-0">
-                  <div className="font-semibold truncate">{t.buyer_name}</div>
-                  <div className="text-xs text-slate-400 truncate">
-                    {t.buyer_contact || <span className="italic">no contact</span>}
-                  </div>
-                  <div className="text-[10px] text-slate-600 truncate font-mono">{t.id}</div>
+              <li key={t.id}>
+                <div className="flex items-center gap-2 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setViewingTicket(t)}
+                    className="flex-1 min-w-0 flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-slate-800 active:bg-slate-800 text-left"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-semibold truncate">{t.buyer_name}</div>
+                      <div className="text-xs text-slate-400 truncate">
+                        {t.buyer_contact || <span className="italic">no contact</span>}
+                      </div>
+                      <div className="text-[10px] text-slate-600 truncate font-mono">{t.id}</div>
+                    </div>
+                    <span
+                      className={`text-xs px-2 py-1 rounded font-semibold shrink-0 ${
+                        t.is_in
+                          ? 'bg-orange-500/20 text-orange-300'
+                          : 'bg-slate-700 text-slate-300'
+                      }`}
+                    >
+                      {t.is_in ? 'INSIDE' : 'OUTSIDE'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(t)}
+                    aria-label={`Delete ${t.buyer_name}`}
+                    className="shrink-0 text-slate-500 hover:text-red-400 active:text-red-500 px-3 py-2 text-lg"
+                  >
+                    ✕
+                  </button>
                 </div>
-                <span
-                  className={`text-xs px-2 py-1 rounded font-semibold ml-3 shrink-0 ${
-                    t.is_in
-                      ? 'bg-orange-500/20 text-orange-300'
-                      : 'bg-slate-700 text-slate-300'
-                  }`}
-                >
-                  {t.is_in ? 'INSIDE' : 'OUTSIDE'}
-                </span>
               </li>
             ))}
           </ul>
@@ -253,12 +334,14 @@ function CreateTicketForm({ onCreated }: { onCreated: (t: TicketRow) => void }) 
   );
 }
 
-function CreatedTicketPanel({
+function TicketBarcodePanel({
   ticket,
   onDismiss,
+  onDelete,
 }: {
   ticket: TicketRow;
   onDismiss: () => void;
+  onDelete: () => void;
 }) {
   const matrixRef = useRef<DataMatrixHandle>(null);
 
@@ -285,17 +368,15 @@ function CreatedTicketPanel({
   return (
     <div className="bg-slate-900 rounded-xl p-4 space-y-4">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs uppercase tracking-widest text-slate-400">
-            Created ticket
-          </div>
+        <div className="min-w-0">
+          <div className="text-xs uppercase tracking-widest text-slate-400">Ticket</div>
           <div className="text-lg font-semibold">{ticket.buyer_name}</div>
           <div className="text-xs text-slate-400 font-mono break-all">{ticket.id}</div>
         </div>
         <button
           type="button"
           onClick={onDismiss}
-          className="text-slate-400 active:text-slate-200 text-sm"
+          className="text-slate-400 active:text-slate-200 text-sm shrink-0"
         >
           Dismiss
         </button>
@@ -319,6 +400,13 @@ function CreatedTicketPanel({
           Copy image
         </button>
       </div>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="w-full bg-red-900/40 hover:bg-red-900/60 active:bg-red-900/80 text-red-300 rounded-lg py-2 text-sm"
+      >
+        Delete ticket
+      </button>
     </div>
   );
 }
