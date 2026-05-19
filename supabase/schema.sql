@@ -65,3 +65,48 @@ grant execute on function public.lookup_ticket(uuid) to anon;
 grant execute on function public.toggle_ticket(uuid, boolean) to anon;
 grant execute on function public.lookup_ticket(uuid) to authenticated;
 grant execute on function public.toggle_ticket(uuid, boolean) to authenticated;
+
+-- 6. Bouncer passcode gate.
+-- A simple key/value settings table. The passcode value is never exposed to
+-- the anon (bouncer) client directly; bouncers validate by calling the
+-- check_passcode RPC, which returns only true/false.
+create table if not exists public.settings (
+  key         text primary key,
+  value       text not null,
+  updated_at  timestamptz not null default now()
+);
+
+alter table public.settings enable row level security;
+
+-- Admin can read and edit settings (e.g. from the Supabase Table Editor).
+drop policy if exists "admin manage settings" on public.settings;
+create policy "admin manage settings"
+  on public.settings
+  for all
+  to authenticated
+  using (true)
+  with check (true);
+
+-- Seed a default passcode. Change it via the Supabase Table Editor any time.
+insert into public.settings (key, value)
+  values ('bouncer_passcode', 'changeme')
+  on conflict (key) do nothing;
+
+-- 7. check_passcode RPC: returns true if the given string matches the stored
+-- bouncer passcode. Anon-callable. Never returns the passcode itself.
+create or replace function public.check_passcode(passcode text)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+      from public.settings
+     where key = 'bouncer_passcode'
+       and value = passcode
+  );
+$$;
+
+grant execute on function public.check_passcode(text) to anon;
+grant execute on function public.check_passcode(text) to authenticated;
