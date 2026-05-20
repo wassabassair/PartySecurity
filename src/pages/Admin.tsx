@@ -359,9 +359,8 @@ function TicketBarcodePanel({
 
     const link = `${window.location.origin}/t/${ticket.id}`;
     const text =
-      `Hi ${ticket.buyer_name}, here's your entry ticket for the party. ` +
-      `Open this link and show the barcode at the door — please don't share it, ` +
-      `each code only works for one person:\n${link}`;
+      `היי ${ticket.buyer_name}, זה הכרטיס שלך למסיבת 67. ` +
+      `מומלץ לצלם מסך ולשמור. לידיעתך, הכרטיס יעבוד רק פעם אחת. ${link}`;
     const waUrl = intl
       ? `https://wa.me/${intl}?text=${encodeURIComponent(text)}`
       : `https://wa.me/?text=${encodeURIComponent(text)}`;

@@ -59,8 +59,8 @@ export default function TicketView() {
         <div className="text-sm uppercase tracking-widest text-slate-400">Your party ticket</div>
         <h1 className="text-2xl font-bold">{ticket.buyer_name}</h1>
       </div>
-      <div className="bg-white rounded-2xl p-5">
-        <DataMatrix value={ticket.id} scale={10} />
+      <div className="bg-white rounded-2xl p-5 w-full max-w-xs">
+        <DataMatrix value={ticket.id} scale={8} />
       </div>
       <p className="text-center text-slate-300 max-w-xs">
         Show this barcode at the entrance. Please don't share it — each code only works for one

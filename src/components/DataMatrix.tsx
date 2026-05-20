@@ -36,7 +36,7 @@ export const DataMatrix = forwardRef<DataMatrixHandle, Props>(function DataMatri
     }
   }, [value, scale]);
 
-  return <canvas ref={canvasRef} className="bg-white rounded" />;
+  return <canvas ref={canvasRef} className="bg-white rounded block max-w-full h-auto mx-auto" />;
 });
 
 export function downloadCanvasPng(canvas: HTMLCanvasElement, filename: string) {
