@@ -157,6 +157,10 @@ function AdminDashboard({ email }: { email: string }) {
     }
   }, [viewingTicket]);
 
+  const insideCount = tickets.filter((t) => t.is_in).length;
+  const totalCount = tickets.length;
+  const outsideCount = totalCount - insideCount;
+
   const filtered = tickets.filter((t) => {
     if (!filter) return true;
     const q = filter.toLowerCase();
@@ -194,6 +198,21 @@ function AdminDashboard({ email }: { email: string }) {
         </div>
       </header>
 
+      <section className="grid grid-cols-3 gap-3">
+        <div className="bg-slate-900 rounded-xl p-4 text-center">
+          <div className="text-3xl font-bold tabular-nums">{totalCount}</div>
+          <div className="text-xs uppercase tracking-widest text-slate-400 mt-1">Tickets</div>
+        </div>
+        <div className="bg-slate-900 rounded-xl p-4 text-center">
+          <div className="text-3xl font-bold tabular-nums text-orange-300">{insideCount}</div>
+          <div className="text-xs uppercase tracking-widest text-slate-400 mt-1">Inside</div>
+        </div>
+        <div className="bg-slate-900 rounded-xl p-4 text-center">
+          <div className="text-3xl font-bold tabular-nums text-slate-300">{outsideCount}</div>
+          <div className="text-xs uppercase tracking-widest text-slate-400 mt-1">Outside</div>
+        </div>
+      </section>
+
       <CreateTicketForm
         onCreated={(t) => {
           setViewingTicket(t);
@@ -226,9 +245,6 @@ function AdminDashboard({ email }: { email: string }) {
           >
             Refresh
           </button>
-        </div>
-        <div className="text-xs text-slate-500">
-          {tickets.filter((t) => t.is_in).length} inside · {tickets.length} total
         </div>
         {loading ? (
           <div className="text-slate-400">Loading tickets…</div>
