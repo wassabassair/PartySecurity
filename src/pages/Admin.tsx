@@ -1,7 +1,15 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { DataMatrix, DataMatrixHandle, downloadCanvasPng } from '../components/DataMatrix';
+import {
+  DataMatrix,
+  DataMatrixHandle,
+  downloadCanvasPng,
+  canvasToPngFile,
+} from '../components/DataMatrix';
+
+const canShareFiles =
+  typeof navigator !== 'undefined' && typeof navigator.canShare === 'function';
 
 type TicketRow = {
   id: string;
@@ -344,12 +352,52 @@ function TicketBarcodePanel({
   onDelete: () => void;
 }) {
   const matrixRef = useRef<DataMatrixHandle>(null);
+  const shareFileRef = useRef<File | null>(null);
+
+  const fileName = () => {
+    const safe = ticket.buyer_name.replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+    return `ticket_${safe || 'guest'}_${ticket.id.slice(0, 8)}.png`;
+  };
+
+  useEffect(() => {
+    shareFileRef.current = null;
+    if (!canShareFiles) return;
+    const canvas = matrixRef.current?.getCanvas();
+    if (!canvas) return;
+    canvasToPngFile(canvas, fileName())
+      .then((file) => {
+        shareFileRef.current = file;
+      })
+      .catch(() => {
+        shareFileRef.current = null;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket.id]);
+
+  const handleWhatsApp = async () => {
+    const file = shareFileRef.current;
+    if (!file || !navigator.canShare({ files: [file] })) {
+      alert('Sharing is not available — use Download PNG instead.');
+      return;
+    }
+    try {
+      await navigator.share({
+        files: [file],
+        text:
+          `Hi ${ticket.buyer_name}, here's your entry ticket for the party. ` +
+          `Show this barcode at the door. Please don't share it — each code only works for one person.`,
+      });
+    } catch (err) {
+      if ((err as DOMException)?.name !== 'AbortError') {
+        alert('Could not open the share sheet — use Download PNG instead.');
+      }
+    }
+  };
 
   const handleDownload = () => {
     const canvas = matrixRef.current?.getCanvas();
     if (!canvas) return;
-    const safe = ticket.buyer_name.replace(/[^a-z0-9]+/gi, '_').toLowerCase();
-    downloadCanvasPng(canvas, `ticket_${safe || 'guest'}_${ticket.id.slice(0, 8)}.png`);
+    downloadCanvasPng(canvas, fileName());
   };
 
   const handleCopy = async () => {
@@ -384,6 +432,19 @@ function TicketBarcodePanel({
       <div className="flex justify-center">
         <DataMatrix ref={matrixRef} value={ticket.id} scale={8} />
       </div>
+      {canShareFiles ? (
+        <button
+          type="button"
+          onClick={handleWhatsApp}
+          className="w-full bg-green-600 active:bg-green-700 rounded-lg py-3 font-semibold"
+        >
+          Send via WhatsApp
+        </button>
+      ) : (
+        <div className="text-center text-xs text-slate-500">
+          Open the admin panel on your phone to share to WhatsApp.
+        </div>
+      )}
       <div className="flex gap-3">
         <button
           type="button"

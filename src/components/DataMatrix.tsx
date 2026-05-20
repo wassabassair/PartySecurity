@@ -48,3 +48,12 @@ export function downloadCanvasPng(canvas: HTMLCanvasElement, filename: string) {
   a.click();
   document.body.removeChild(a);
 }
+
+export function canvasToPngFile(canvas: HTMLCanvasElement, filename: string): Promise<File> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) return reject(new Error('Canvas is empty'));
+      resolve(new File([blob], filename, { type: 'image/png' }));
+    }, 'image/png');
+  });
+}
