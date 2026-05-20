@@ -1,15 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import {
-  DataMatrix,
-  DataMatrixHandle,
-  downloadCanvasPng,
-  canvasToPngFile,
-} from '../components/DataMatrix';
-
-const canShareFiles =
-  typeof navigator !== 'undefined' && typeof navigator.canShare === 'function';
+import { DataMatrix, DataMatrixHandle, downloadCanvasPng } from '../components/DataMatrix';
 
 type TicketRow = {
   id: string;
@@ -352,46 +344,28 @@ function TicketBarcodePanel({
   onDelete: () => void;
 }) {
   const matrixRef = useRef<DataMatrixHandle>(null);
-  const shareFileRef = useRef<File | null>(null);
 
   const fileName = () => {
     const safe = ticket.buyer_name.replace(/[^a-z0-9]+/gi, '_').toLowerCase();
     return `ticket_${safe || 'guest'}_${ticket.id.slice(0, 8)}.png`;
   };
 
-  useEffect(() => {
-    shareFileRef.current = null;
-    if (!canShareFiles) return;
-    const canvas = matrixRef.current?.getCanvas();
-    if (!canvas) return;
-    canvasToPngFile(canvas, fileName())
-      .then((file) => {
-        shareFileRef.current = file;
-      })
-      .catch(() => {
-        shareFileRef.current = null;
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticket.id]);
+  const handleSendWhatsApp = () => {
+    const digits = (ticket.buyer_contact ?? '').replace(/\D/g, '');
+    let intl = '';
+    if (digits.startsWith('972')) intl = digits;
+    else if (digits.startsWith('0')) intl = '972' + digits.slice(1);
+    else if (digits.length >= 9) intl = digits;
 
-  const handleWhatsApp = async () => {
-    const file = shareFileRef.current;
-    if (!file || !navigator.canShare({ files: [file] })) {
-      alert('Sharing is not available — use Download PNG instead.');
-      return;
-    }
-    try {
-      await navigator.share({
-        files: [file],
-        text:
-          `Hi ${ticket.buyer_name}, here's your entry ticket for the party. ` +
-          `Show this barcode at the door. Please don't share it — each code only works for one person.`,
-      });
-    } catch (err) {
-      if ((err as DOMException)?.name !== 'AbortError') {
-        alert('Could not open the share sheet — use Download PNG instead.');
-      }
-    }
+    const link = `${window.location.origin}/t/${ticket.id}`;
+    const text =
+      `Hi ${ticket.buyer_name}, here's your entry ticket for the party. ` +
+      `Open this link and show the barcode at the door — please don't share it, ` +
+      `each code only works for one person:\n${link}`;
+    const waUrl = intl
+      ? `https://wa.me/${intl}?text=${encodeURIComponent(text)}`
+      : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(waUrl, '_blank', 'noopener');
   };
 
   const handleDownload = () => {
@@ -432,19 +406,13 @@ function TicketBarcodePanel({
       <div className="flex justify-center">
         <DataMatrix ref={matrixRef} value={ticket.id} scale={8} />
       </div>
-      {canShareFiles ? (
-        <button
-          type="button"
-          onClick={handleWhatsApp}
-          className="w-full bg-green-600 active:bg-green-700 rounded-lg py-3 font-semibold"
-        >
-          Send via WhatsApp
-        </button>
-      ) : (
-        <div className="text-center text-xs text-slate-500">
-          Open the admin panel on your phone to share to WhatsApp.
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={handleSendWhatsApp}
+        className="w-full bg-green-600 active:bg-green-700 rounded-lg py-3 font-semibold"
+      >
+        Send via WhatsApp
+      </button>
       <div className="flex gap-3">
         <button
           type="button"

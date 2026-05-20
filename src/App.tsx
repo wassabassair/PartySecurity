@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Scan from './pages/Scan';
 import Admin from './pages/Admin';
+import TicketView from './pages/TicketView';
 import { BouncerGate } from './components/BouncerGate';
 
 export default function App() {
@@ -9,6 +10,7 @@ export default function App() {
       <Route path="/" element={<BouncerGate><Scan /></BouncerGate>} />
       <Route path="/scan" element={<BouncerGate><Scan /></BouncerGate>} />
       <Route path="/admin" element={<Admin />} />
+      <Route path="/t/:id" element={<TicketView />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
