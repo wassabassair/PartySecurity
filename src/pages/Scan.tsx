@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
 import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import { supabase, TicketState } from '../lib/supabase';
+import { clearBouncerPasscode, getBouncerPasscode } from '../lib/passcode';
 import { ScanConfirm } from '../components/ScanConfirm';
 import { ScanResult } from '../components/ScanResult';
 
@@ -95,9 +96,16 @@ export default function Scan() {
     const { data, error } = await supabase.rpc('toggle_ticket', {
       ticket_id: ticket.id,
       expected_state: ticket.is_in,
+      passcode: getBouncerPasscode() ?? '',
     });
     setBusy(false);
     if (error) {
+      if (error.message.toLowerCase().includes('invalid passcode')) {
+        // Passcode was rotated — drop the stored one and re-gate.
+        clearBouncerPasscode();
+        window.location.reload();
+        return;
+      }
       setMode({ kind: 'flash', variant: 'error', message: 'NETWORK ERROR' });
       return;
     }

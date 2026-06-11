@@ -1,7 +1,10 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-
-const STORAGE_KEY = 'partysecurity_bouncer_ok';
+import {
+  clearBouncerPasscode,
+  getBouncerPasscode,
+  setBouncerPasscode,
+} from '../lib/passcode';
 
 type Status = 'checking' | 'gated' | 'allowed';
 
@@ -12,23 +15,41 @@ export function BouncerGate({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      if (localStorage.getItem(STORAGE_KEY) === '1') {
+    const stored = getBouncerPasscode();
+    if (!stored) {
+      setStatus('gated');
+      return;
+    }
+    let cancelled = false;
+    // Re-verify the stored passcode so rotating it in the settings table
+    // revokes devices that already passed the gate.
+    supabase.rpc('check_passcode', { passcode: stored }).then(({ data, error: rpcError }) => {
+      if (cancelled) return;
+      if (rpcError) {
+        // Network hiccup — let them through; toggle_ticket validates the
+        // passcode server-side on every call anyway.
+        setStatus('allowed');
+        return;
+      }
+      if (data === true) {
         setStatus('allowed');
       } else {
+        clearBouncerPasscode();
         setStatus('gated');
       }
-    } catch {
-      setStatus('gated');
-    }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    const trimmed = passcode.trim();
     const { data, error: rpcError } = await supabase.rpc('check_passcode', {
-      passcode: passcode.trim(),
+      passcode: trimmed,
     });
     setBusy(false);
     if (rpcError) {
@@ -36,11 +57,7 @@ export function BouncerGate({ children }: { children: ReactNode }) {
       return;
     }
     if (data === true) {
-      try {
-        localStorage.setItem(STORAGE_KEY, '1');
-      } catch {
-        // localStorage disabled — they will get prompted again next visit
-      }
+      setBouncerPasscode(trimmed);
       setStatus('allowed');
       return;
     }

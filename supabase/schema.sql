@@ -43,28 +43,47 @@ as $$
    where t.id = ticket_id;
 $$;
 
--- 4. Toggle RPC: atomically flip in/out state, but only if the DB still
--- matches the state the bouncer saw on screen. Returns zero rows if another
--- bouncer flipped it first (the UI then re-fetches and shows the new state).
-create or replace function public.toggle_ticket(ticket_id uuid, expected_state boolean)
+-- 4. Toggle RPC: atomically flip in/out state. Requires the bouncer passcode
+-- so a ticket holder who knows their own UUID cannot flip themselves back to
+-- OUTSIDE and reuse the code. Only updates if the DB still matches the state
+-- the bouncer saw on screen; returns zero rows if another bouncer flipped it
+-- first (the UI then re-fetches and shows the new state). Raises an exception
+-- for a bad passcode so the UI can re-prompt.
+
+-- Drop the old passcode-less signature so anon can no longer call it.
+drop function if exists public.toggle_ticket(uuid, boolean);
+
+create or replace function public.toggle_ticket(ticket_id uuid, expected_state boolean, passcode text)
 returns table (id uuid, buyer_name text, is_in boolean)
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
-  update public.tickets
+begin
+  if not exists (
+    select 1
+      from public.settings s
+     where s.key = 'bouncer_passcode'
+       and s.value = passcode
+  ) then
+    raise exception 'invalid passcode';
+  end if;
+
+  return query
+  update public.tickets t
      set is_in = not expected_state,
          last_change_at = now()
-   where id = ticket_id
-     and is_in = expected_state
-  returning id, buyer_name, is_in;
+   where t.id = ticket_id
+     and t.is_in = expected_state
+  returning t.id, t.buyer_name, t.is_in;
+end;
 $$;
 
 -- 5. Grant execute on the RPCs to the anonymous role used by the bouncer page.
 grant execute on function public.lookup_ticket(uuid) to anon;
-grant execute on function public.toggle_ticket(uuid, boolean) to anon;
+grant execute on function public.toggle_ticket(uuid, boolean, text) to anon;
 grant execute on function public.lookup_ticket(uuid) to authenticated;
-grant execute on function public.toggle_ticket(uuid, boolean) to authenticated;
+grant execute on function public.toggle_ticket(uuid, boolean, text) to authenticated;
 
 -- 6. Bouncer passcode gate.
 -- A simple key/value settings table. The passcode value is never exposed to
@@ -94,18 +113,22 @@ insert into public.settings (key, value)
 
 -- 7. check_passcode RPC: returns true if the given string matches the stored
 -- bouncer passcode. Anon-callable. Never returns the passcode itself.
+-- The short sleep slows online brute-force attempts against the passcode.
 create or replace function public.check_passcode(passcode text)
 returns boolean
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
-  select exists (
+begin
+  perform pg_sleep(0.4);
+  return exists (
     select 1
       from public.settings
      where key = 'bouncer_passcode'
        and value = passcode
   );
+end;
 $$;
 
 grant execute on function public.check_passcode(text) to anon;

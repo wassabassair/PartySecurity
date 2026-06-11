@@ -182,6 +182,22 @@ function AdminDashboard({ email }: { email: string }) {
     setViewingTicket((current) => (current?.id === t.id ? null : current));
   };
 
+  const handleToggle = async (t: TicketRow) => {
+    const { data, error } = await supabase
+      .from('tickets')
+      .update({ is_in: !t.is_in, last_change_at: new Date().toISOString() })
+      .eq('id', t.id)
+      .select()
+      .single();
+    if (error || !data) {
+      alert(`Could not update: ${error?.message ?? 'unknown error'}`);
+      return;
+    }
+    const row = data as TicketRow;
+    setTickets((prev) => prev.map((x) => (x.id === row.id ? row : x)));
+    setViewingTicket((current) => (current?.id === row.id ? row : current));
+  };
+
   return (
     <div className="min-h-screen p-4 sm:p-8 max-w-3xl mx-auto space-y-6">
       <header className="flex items-center justify-between">
@@ -226,6 +242,7 @@ function AdminDashboard({ email }: { email: string }) {
             ticket={viewingTicket}
             onDismiss={() => setViewingTicket(null)}
             onDelete={() => handleDelete(viewingTicket)}
+            onToggle={() => handleToggle(viewingTicket)}
           />
         </div>
       )}
@@ -354,10 +371,12 @@ function TicketBarcodePanel({
   ticket,
   onDismiss,
   onDelete,
+  onToggle,
 }: {
   ticket: TicketRow;
   onDismiss: () => void;
   onDelete: () => void;
+  onToggle: () => void;
 }) {
   const matrixRef = useRef<DataMatrixHandle>(null);
 
@@ -420,6 +439,26 @@ function TicketBarcodePanel({
       </div>
       <div className="flex justify-center">
         <DataMatrix ref={matrixRef} value={ticket.id} scale={8} />
+      </div>
+      <div className="flex items-center justify-between gap-3 bg-slate-800 rounded-lg px-4 py-3">
+        <span
+          className={`text-sm font-semibold ${
+            ticket.is_in ? 'text-orange-300' : 'text-slate-300'
+          }`}
+        >
+          {ticket.is_in ? 'INSIDE' : 'OUTSIDE'}
+        </span>
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`rounded-lg px-4 py-2 font-semibold ${
+            ticket.is_in
+              ? 'bg-slate-700 active:bg-slate-600'
+              : 'bg-orange-600 active:bg-orange-700'
+          }`}
+        >
+          {ticket.is_in ? 'Let out' : 'Let in'}
+        </button>
       </div>
       <button
         type="button"
